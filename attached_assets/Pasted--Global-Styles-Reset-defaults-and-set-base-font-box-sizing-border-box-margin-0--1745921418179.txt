@@ -1,0 +1,128 @@
+/* Global Styles: Reset defaults and set base font */
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: Arial, sans-serif;
+}
+
+/* Header Styles: Responsive navigation bar */
+header {
+    background-color: #333;
+    color: #fff;
+    padding: 1rem;
+}
+
+nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.logo {
+    font-size: 1.5rem;
+    font-weight: bold;
+}
+
+.nav-links {
+    list-style: none;
+    display: flex;
+}
+
+.nav-links li {
+    margin-left: 1rem;
+}
+
+.nav-links a {
+    color: #fff;
+    text-decoration: none;
+}
+
+/* Hero Section Styles: Full-width banner with gradient (replace with image) */
+.hero {
+    background: linear-gradient(to right, #ff7e5f, #feb47b); /* Placeholder; use concert/festival image */
+    color: #fff;
+    text-align: center;
+    padding: 4rem 1rem;
+}
+
+.hero h1 {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+}
+
+#search-bar {
+    width: 80%;
+    max-width: 600px;
+    padding: 0.5rem;
+    font-size: 1rem;
+    border: none;
+    border-radius: 5px;
+}
+
+/* Featured Events Styles: Grid layout for event cards */
+.featured-events {
+    padding: 2rem 1rem;
+}
+
+.featured-events h2 {
+    text-align: center;
+    margin-bottom: 2rem;
+}
+
+.events-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+}
+
+.event-card {
+    border: 1px solid #ddd;
+    padding: 1rem;
+    text-align: center;
+}
+
+.event-card img {
+    width: 100%;
+    height: auto;
+    margin-bottom: 1rem;
+}
+
+.event-card h3 {
+    font-size: 1.2rem;
+    margin-bottom: 0.5rem;
+}
+
+.event-card p {
+    margin-bottom: 1rem;
+}
+
+.buy-tickets {
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+}
+
+.buy-tickets:hover {
+    background-color: #0056b3;
+}
+
+/* Utility Class: For hiding elements during filtering */
+.hidden {
+    display: none;
+}
+
+/* Responsive Styles: Adjust layout for smaller screens */
+@media (max-width: 768px) {
+    .nav-links {
+        flex-wrap: wrap;
+    }
+    .nav-links li {
+        margin: 0.5rem;
+    }
+}
