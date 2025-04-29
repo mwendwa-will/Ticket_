@@ -136,7 +136,7 @@ const EventDetails = ({ eventId }: EventDetailsProps) => {
                 <div className="mb-4 border-t border-gray-200 pt-4">
                   <div className="flex justify-between mb-2">
                     <span>Price per ticket:</span>
-                    <span>${event.price.toFixed(2)}</span>
+                    <span>${Number(event.price).toFixed(2)}</span>
                   </div>
                   <div className="flex justify-between mb-2">
                     <span>Quantity:</span>
@@ -144,17 +144,20 @@ const EventDetails = ({ eventId }: EventDetailsProps) => {
                   </div>
                   <div className="flex justify-between font-bold">
                     <span>Total:</span>
-                    <span>${(event.price * parseInt(quantity)).toFixed(2)}</span>
+                    <span>${(Number(event.price) * parseInt(quantity)).toFixed(2)}</span>
                   </div>
                 </div>
               </CardContent>
-              <CardFooter className="bg-gray-100 p-4">
+              <CardFooter className="bg-gray-100 p-4 flex flex-col space-y-2">
                 <Button 
                   className="w-full buy-tickets" 
                   onClick={handleBuyTickets}
                 >
+                  <TicketIcon className="w-4 h-4 mr-2" />
                   Proceed to Checkout
                 </Button>
+                
+                <WishlistButton event={event} />
               </CardFooter>
             </Card>
             
