@@ -9,6 +9,7 @@ import Home from "@/pages/Home";
 import EventPage from "@/pages/EventPage";
 import Checkout from "@/pages/Checkout";
 import WishlistPage from "@/pages/WishlistPage";
+import CalendarView from "@/pages/CalendarView";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
@@ -22,6 +23,7 @@ function Router() {
           <Route path="/event/:id" component={EventPage} />
           <Route path="/checkout/:id" component={Checkout} />
           <Route path="/wishlist" component={WishlistPage} />
+          <Route path="/calendar" component={CalendarView} />
           <Route component={NotFound} />
         </Switch>
       </main>

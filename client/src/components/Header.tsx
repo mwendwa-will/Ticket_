@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { MusicIcon, TicketIcon, HomeIcon, UserIcon, HeartIcon } from "lucide-react";
+import { MusicIcon, TicketIcon, HomeIcon, UserIcon, HeartIcon, CalendarIcon } from "lucide-react";
 import { useWishlist } from "@/hooks/use-wishlist";
 import { Badge } from "@/components/ui/badge";
 
@@ -32,6 +32,14 @@ const Header = () => {
               <div className="flex items-center hover:text-blue-300 cursor-pointer">
                 <TicketIcon className="w-4 h-4 mr-1" />
                 <span>Events</span>
+              </div>
+            </Link>
+          </li>
+          <li>
+            <Link href="/calendar">
+              <div className="flex items-center hover:text-blue-300 cursor-pointer">
+                <CalendarIcon className="w-4 h-4 mr-1" />
+                <span>Calendar</span>
               </div>
             </Link>
           </li>

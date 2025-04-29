@@ -6,8 +6,9 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/componen
 import { Event } from "@shared/schema";
 import { formatDate } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Calendar, MapPin, Clock, Tag, Users } from "lucide-react";
+import { Calendar, MapPin, Clock, Tag, Users, TicketIcon } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import WishlistButton from "./WishlistButton";
 
 interface EventDetailsProps {
   eventId: string;
@@ -65,7 +66,7 @@ const EventDetails = ({ eventId }: EventDetailsProps) => {
             </span>
           </div>
           <div className="text-right">
-            <p className="text-2xl font-bold">${event.price.toFixed(2)}</p>
+            <p className="text-2xl font-bold">${Number(event.price).toFixed(2)}</p>
             <p className="text-sm text-gray-500">per ticket</p>
           </div>
         </div>
