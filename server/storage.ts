@@ -1,17 +1,53 @@
-import { events, purchases, type Event, type InsertEvent, type Purchase, type InsertPurchase } from "@shared/schema";
+import { events, purchases, users, type Event, type InsertEvent, type Purchase, type InsertPurchase, type User, type InsertUser, UserRole } from "@shared/schema";
+import { Store } from "express-session";
+import { scrypt, randomBytes, timingSafeEqual } from "crypto";
+import { promisify } from "util";
+
+// For password hashing
+const scryptAsync = promisify(scrypt);
+
+async function hashPassword(password: string) {
+  const salt = randomBytes(16).toString("hex");
+  const buf = (await scryptAsync(password, salt, 64)) as Buffer;
+  return `${buf.toString("hex")}.${salt}`;
+}
+
+export async function comparePasswords(supplied: string, stored: string) {
+  const [hashed, salt] = stored.split(".");
+  const hashedBuf = Buffer.from(hashed, "hex");
+  const suppliedBuf = (await scryptAsync(supplied, salt, 64)) as Buffer;
+  return timingSafeEqual(hashedBuf, suppliedBuf);
+}
 
 export interface IStorage {
+  // User methods
+  createUser(user: InsertUser): Promise<User>;
+  getUser(id: number): Promise<User | undefined>;
+  getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
+  updateUser(id: number, user: Partial<User>): Promise<User | undefined>;
+  
   // Event methods
   getAllEvents(): Promise<Event[]>;
   getEvent(id: number): Promise<Event | undefined>;
   searchEvents(query: string): Promise<Event[]>;
   getEventsByGenre(genre: string): Promise<Event[]>;
+  getEventsByCreator(creatorId: number): Promise<Event[]>;
   createEvent(event: InsertEvent): Promise<Event>;
+  updateEvent(id: number, event: Partial<Event>): Promise<Event | undefined>;
+  deleteEvent(id: number): Promise<boolean>;
   
   // Purchase methods
   createPurchase(purchase: InsertPurchase): Promise<Purchase>;
   getPurchase(id: number): Promise<Purchase | undefined>;
   getPurchasesByEvent(eventId: number): Promise<Purchase[]>;
+  getPurchasesByUser(userId: number): Promise<Purchase[]>;
+  
+  // Auth methods
+  verifyCredentials(username: string, password: string): Promise<User | null>;
+  
+  // Session store
+  sessionStore: Store;
 }
 
 export class MemStorage implements IStorage {
@@ -183,4 +219,146 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+// Database storage implementation
+import { db } from "./db";
+import { eq, like, or, and } from "drizzle-orm";
+import connectPg from "connect-pg-simple";
+import session from "express-session";
+import { pool } from "./db";
+
+const PostgresSessionStore = connectPg(session);
+
+export class DatabaseStorage implements IStorage {
+  sessionStore: Store;
+  
+  constructor() {
+    this.sessionStore = new PostgresSessionStore({
+      pool,
+      createTableIfMissing: true
+    });
+  }
+  
+  // User methods
+  async createUser(user: InsertUser): Promise<User> {
+    const hashedPassword = await hashPassword(user.password);
+    const [newUser] = await db.insert(users)
+      .values({
+        ...user,
+        password: hashedPassword
+      })
+      .returning();
+    return newUser;
+  }
+  
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
+  }
+  
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
+  }
+  
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
+  }
+  
+  async updateUser(id: number, userData: Partial<User>): Promise<User | undefined> {
+    if (userData.password) {
+      userData.password = await hashPassword(userData.password);
+    }
+    
+    const [updatedUser] = await db.update(users)
+      .set(userData)
+      .where(eq(users.id, id))
+      .returning();
+    return updatedUser;
+  }
+  
+  // Event methods
+  async getAllEvents(): Promise<Event[]> {
+    return await db.select().from(events);
+  }
+  
+  async getEvent(id: number): Promise<Event | undefined> {
+    const [event] = await db.select().from(events).where(eq(events.id, id));
+    return event;
+  }
+  
+  async searchEvents(query: string): Promise<Event[]> {
+    const searchPattern = `%${query}%`;
+    return await db.select().from(events).where(
+      or(
+        like(events.title, searchPattern),
+        like(events.description, searchPattern),
+        like(events.location, searchPattern)
+      )
+    );
+  }
+  
+  async getEventsByGenre(genre: string): Promise<Event[]> {
+    if (genre === 'all') {
+      return this.getAllEvents();
+    }
+    return await db.select().from(events).where(eq(events.genre, genre));
+  }
+  
+  async getEventsByCreator(creatorId: number): Promise<Event[]> {
+    return await db.select().from(events).where(eq(events.creatorId, creatorId));
+  }
+  
+  async createEvent(event: InsertEvent): Promise<Event> {
+    const [newEvent] = await db.insert(events).values(event).returning();
+    return newEvent;
+  }
+  
+  async updateEvent(id: number, eventData: Partial<Event>): Promise<Event | undefined> {
+    const [updatedEvent] = await db.update(events)
+      .set(eventData)
+      .where(eq(events.id, id))
+      .returning();
+    return updatedEvent;
+  }
+  
+  async deleteEvent(id: number): Promise<boolean> {
+    await db.delete(events).where(eq(events.id, id));
+    return true; // If no error is thrown, consider it successful
+  }
+  
+  // Purchase methods
+  async createPurchase(purchase: InsertPurchase): Promise<Purchase> {
+    const [newPurchase] = await db.insert(purchases).values(purchase).returning();
+    return newPurchase;
+  }
+  
+  async getPurchase(id: number): Promise<Purchase | undefined> {
+    const [purchase] = await db.select().from(purchases).where(eq(purchases.id, id));
+    return purchase;
+  }
+  
+  async getPurchasesByEvent(eventId: number): Promise<Purchase[]> {
+    return await db.select()
+      .from(purchases)
+      .where(eq(purchases.eventId, eventId));
+  }
+  
+  async getPurchasesByUser(userId: number): Promise<Purchase[]> {
+    return await db.select()
+      .from(purchases)
+      .where(eq(purchases.userId, userId));
+  }
+  
+  // Auth methods
+  async verifyCredentials(username: string, password: string): Promise<User | null> {
+    const user = await this.getUserByUsername(username);
+    if (!user) return null;
+    
+    const isPasswordValid = await comparePasswords(password, user.password);
+    return isPasswordValid ? user : null;
+  }
+}
+
+// Use database storage instead of memory storage
+export const storage = new DatabaseStorage();
