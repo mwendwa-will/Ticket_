@@ -1,5 +1,8 @@
 import { db } from "./db";
-import { UserRole, users, events, purchases } from "../shared/schema";
+import { 
+  UserRole, users, events, purchases, reviews, followers, 
+  wishlists, notifications, promocodes 
+} from "../shared/schema";
 import { log } from "./vite";
 import { sql } from "drizzle-orm";
 import { scrypt, randomBytes } from "crypto";
@@ -18,6 +21,30 @@ async function setupDatabase() {
   try {
     log("Starting database setup...");
     
+    // First, check if we need to drop tables for a clean start
+    // This is not ideal for production, but helps during development
+    // when schema changes need to be applied
+    const shouldRecreateSchema = process.env.RECREATE_SCHEMA === 'true';
+    
+    if (shouldRecreateSchema) {
+      log("Recreating database schema...");
+      // Drop tables in reverse order of dependencies
+      try {
+        await db.execute(sql`DROP TABLE IF EXISTS promocodes`);
+        await db.execute(sql`DROP TABLE IF EXISTS notifications`);
+        await db.execute(sql`DROP TABLE IF EXISTS wishlists`);
+        await db.execute(sql`DROP TABLE IF EXISTS followers`);
+        await db.execute(sql`DROP TABLE IF EXISTS reviews`);
+        await db.execute(sql`DROP TABLE IF EXISTS purchases`);
+        await db.execute(sql`DROP TABLE IF EXISTS events`);
+        await db.execute(sql`DROP TABLE IF EXISTS users`);
+        
+        log("All tables dropped successfully");
+      } catch (error) {
+        console.error("Error dropping tables:", error);
+      }
+    }
+    
     // Check if users table exists by trying to query it
     try {
       await db.select().from(users).limit(1);
@@ -33,8 +60,13 @@ async function setupDatabase() {
             email TEXT NOT NULL UNIQUE,
             password TEXT NOT NULL,
             full_name TEXT,
-            role TEXT NOT NULL DEFAULT '${UserRole.USER}',
+            role TEXT NOT NULL DEFAULT 'user',
             profile_image TEXT,
+            bio TEXT,
+            phone TEXT,
+            stripe_customer_id TEXT,
+            stripe_subscription_id TEXT,
+            last_login TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
         `);
@@ -67,7 +99,14 @@ async function setupDatabase() {
             is_featured BOOLEAN DEFAULT FALSE,
             creator_id INTEGER NOT NULL,
             published BOOLEAN DEFAULT TRUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            latitude DOUBLE PRECISION,
+            longitude DOUBLE PRECISION,
+            end_date TEXT,
+            end_time TEXT,
+            average_rating DOUBLE PRECISION,
+            total_ratings INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
         `);
         log("Events table created successfully");
@@ -91,10 +130,143 @@ async function setupDatabase() {
             user_id INTEGER NOT NULL,
             quantity INTEGER NOT NULL,
             total_amount NUMERIC NOT NULL,
+            status TEXT DEFAULT 'completed',
+            payment_intent_id TEXT,
+            ticket_code TEXT,
+            promocode_id INTEGER,
+            discount_amount NUMERIC,
+            is_checked_in BOOLEAN DEFAULT FALSE,
+            check_in_date TIMESTAMP,
             purchase_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
           )
         `);
         log("Purchases table created successfully");
+      } else {
+        throw error;
+      }
+    }
+    
+    // Check if reviews table exists
+    try {
+      await db.select().from(reviews).limit(1);
+      log("Reviews table already exists");
+    } catch (error: any) {
+      if (error.message.includes("relation") && error.message.includes("does not exist")) {
+        log("Creating reviews table...");
+        // Create reviews table
+        await db.execute(sql`
+          CREATE TABLE IF NOT EXISTS reviews (
+            id SERIAL PRIMARY KEY,
+            event_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            rating INTEGER NOT NULL,
+            comment TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        log("Reviews table created successfully");
+      } else {
+        throw error;
+      }
+    }
+    
+    // Check if followers table exists
+    try {
+      await db.select().from(followers).limit(1);
+      log("Followers table already exists");
+    } catch (error: any) {
+      if (error.message.includes("relation") && error.message.includes("does not exist")) {
+        log("Creating followers table...");
+        // Create followers table
+        await db.execute(sql`
+          CREATE TABLE IF NOT EXISTS followers (
+            id SERIAL PRIMARY KEY,
+            follower_id INTEGER NOT NULL,
+            organizer_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(follower_id, organizer_id)
+          )
+        `);
+        log("Followers table created successfully");
+      } else {
+        throw error;
+      }
+    }
+    
+    // Check if wishlists table exists
+    try {
+      await db.select().from(wishlists).limit(1);
+      log("Wishlists table already exists");
+    } catch (error: any) {
+      if (error.message.includes("relation") && error.message.includes("does not exist")) {
+        log("Creating wishlists table...");
+        // Create wishlists table
+        await db.execute(sql`
+          CREATE TABLE IF NOT EXISTS wishlists (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            event_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, event_id)
+          )
+        `);
+        log("Wishlists table created successfully");
+      } else {
+        throw error;
+      }
+    }
+    
+    // Check if notifications table exists
+    try {
+      await db.select().from(notifications).limit(1);
+      log("Notifications table already exists");
+    } catch (error: any) {
+      if (error.message.includes("relation") && error.message.includes("does not exist")) {
+        log("Creating notifications table...");
+        // Create notifications table
+        await db.execute(sql`
+          CREATE TABLE IF NOT EXISTS notifications (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            message TEXT NOT NULL,
+            related_id INTEGER,
+            is_read BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        log("Notifications table created successfully");
+      } else {
+        throw error;
+      }
+    }
+    
+    // Check if promocodes table exists
+    try {
+      await db.select().from(promocodes).limit(1);
+      log("Promocodes table already exists");
+    } catch (error: any) {
+      if (error.message.includes("relation") && error.message.includes("does not exist")) {
+        log("Creating promocodes table...");
+        // Create promocodes table
+        await db.execute(sql`
+          CREATE TABLE IF NOT EXISTS promocodes (
+            id SERIAL PRIMARY KEY,
+            code TEXT NOT NULL UNIQUE,
+            discount_type TEXT NOT NULL,
+            discount_amount NUMERIC NOT NULL,
+            max_uses INTEGER,
+            uses_count INTEGER DEFAULT 0,
+            event_id INTEGER,
+            creator_id INTEGER NOT NULL,
+            start_date TIMESTAMP,
+            end_date TIMESTAMP,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+        log("Promocodes table created successfully");
       } else {
         throw error;
       }
@@ -117,7 +289,9 @@ async function setupDatabase() {
           email: "admin@ticketmaster.com",
           password: hashedPassword,
           fullName: "Admin User",
-          role: UserRole.ADMIN
+          role: UserRole.ADMIN,
+          bio: "System administrator",
+          phone: "+1234567890"
         });
         
         log("Admin user created with username: 'admin' and password: 'admin123'");

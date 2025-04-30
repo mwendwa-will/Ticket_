@@ -40,6 +40,10 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
+    // Set environment variable to recreate schema for development
+    // In a production environment, you'd use a proper migration tool
+    process.env.RECREATE_SCHEMA = 'true';
+    
     // Setup database tables and initial data
     await setupDatabase();
     

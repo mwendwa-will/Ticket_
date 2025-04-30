@@ -1,7 +1,19 @@
-import { events, purchases, users, type Event, type InsertEvent, type Purchase, type InsertPurchase, type User, type InsertUser, UserRole } from "@shared/schema";
+import { 
+  events, purchases, users, reviews, followers, wishlists, notifications, promocodes,
+  type Event, type InsertEvent, 
+  type Purchase, type InsertPurchase, 
+  type User, type InsertUser, 
+  type Review, type InsertReview,
+  type Follower, type InsertFollower,
+  type Wishlist, type InsertWishlist,
+  type Notification, type InsertNotification,
+  type Promocode, type InsertPromocode,
+  UserRole 
+} from "@shared/schema";
 import { Store } from "express-session";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { promisify } from "util";
+import { createId } from '@paralleldrive/cuid2';
 
 // For password hashing
 const scryptAsync = promisify(scrypt);
@@ -19,6 +31,16 @@ export async function comparePasswords(supplied: string, stored: string) {
   return timingSafeEqual(hashedBuf, suppliedBuf);
 }
 
+// Generate a secure ticket code
+export function generateTicketCode(): string {
+  return createId();
+}
+
+// Generate a QR code URL for a ticket
+export function getQRCodeUrl(ticketCode: string): string {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${ticketCode}`;
+}
+
 export interface IStorage {
   // User methods
   createUser(user: InsertUser): Promise<User>;
@@ -26,22 +48,68 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   updateUser(id: number, user: Partial<User>): Promise<User | undefined>;
+  updateLastLogin(id: number): Promise<boolean>;
+  updateStripeCustomerId(userId: number, customerId: string): Promise<User>;
+  updateUserStripeInfo(userId: number, stripeInfo: { customerId: string, subscriptionId: string }): Promise<User>;
   
   // Event methods
   getAllEvents(): Promise<Event[]>;
+  getFeaturedEvents(): Promise<Event[]>;
   getEvent(id: number): Promise<Event | undefined>;
   searchEvents(query: string): Promise<Event[]>;
   getEventsByGenre(genre: string): Promise<Event[]>;
   getEventsByCreator(creatorId: number): Promise<Event[]>;
+  getUpcomingEvents(limit?: number): Promise<Event[]>;
+  getEventsByDate(date: string): Promise<Event[]>;
   createEvent(event: InsertEvent): Promise<Event>;
   updateEvent(id: number, event: Partial<Event>): Promise<Event | undefined>;
   deleteEvent(id: number): Promise<boolean>;
+  updateEventRating(eventId: number, rating: number): Promise<Event>;
   
   // Purchase methods
   createPurchase(purchase: InsertPurchase): Promise<Purchase>;
   getPurchase(id: number): Promise<Purchase | undefined>;
   getPurchasesByEvent(eventId: number): Promise<Purchase[]>;
   getPurchasesByUser(userId: number): Promise<Purchase[]>;
+  updatePurchaseStatus(id: number, status: string): Promise<Purchase>;
+  checkInTicket(ticketCode: string): Promise<Purchase>;
+  
+  // Review methods
+  createReview(review: InsertReview): Promise<Review>;
+  getReview(id: number): Promise<Review | undefined>;
+  getReviewsByEvent(eventId: number): Promise<Review[]>;
+  getReviewsByUser(userId: number): Promise<Review[]>;
+  updateReview(id: number, review: Partial<Review>): Promise<Review | undefined>;
+  deleteReview(id: number): Promise<boolean>;
+  
+  // Follower methods
+  followOrganizer(follower: InsertFollower): Promise<Follower>;
+  unfollowOrganizer(followerId: number, organizerId: number): Promise<boolean>;
+  getFollowers(organizerId: number): Promise<User[]>;
+  getFollowing(followerId: number): Promise<User[]>;
+  isFollowing(followerId: number, organizerId: number): Promise<boolean>;
+  
+  // Wishlist methods
+  addToWishlist(wishlist: InsertWishlist): Promise<Wishlist>;
+  removeFromWishlist(userId: number, eventId: number): Promise<boolean>;
+  getWishlistByUser(userId: number): Promise<Event[]>;
+  isInWishlist(userId: number, eventId: number): Promise<boolean>;
+  
+  // Notification methods
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  getNotificationsByUser(userId: number, unreadOnly?: boolean): Promise<Notification[]>;
+  markNotificationAsRead(id: number): Promise<Notification>;
+  markAllNotificationsAsRead(userId: number): Promise<boolean>;
+  deleteNotification(id: number): Promise<boolean>;
+  
+  // Promocode methods
+  createPromocode(promocode: InsertPromocode): Promise<Promocode>;
+  getPromocode(id: number): Promise<Promocode | undefined>;
+  getPromocodeByCode(code: string): Promise<Promocode | undefined>;
+  getPromocodesByCreator(creatorId: number): Promise<Promocode[]>;
+  getPromocodesByEvent(eventId: number): Promise<Promocode[]>;
+  validatePromocode(code: string, eventId?: number): Promise<Promocode | null>;
+  usePromocode(id: number): Promise<Promocode>;
   
   // Auth methods
   verifyCredentials(username: string, password: string): Promise<User | null>;
@@ -221,7 +289,7 @@ export class MemStorage implements IStorage {
 
 // Database storage implementation
 import { db } from "./db";
-import { eq, like, or, and } from "drizzle-orm";
+import { eq, like, or, and, sql } from "drizzle-orm";
 import connectPg from "connect-pg-simple";
 import session from "express-session";
 import { pool } from "./db";
@@ -277,9 +345,41 @@ export class DatabaseStorage implements IStorage {
     return updatedUser;
   }
   
+  async updateLastLogin(id: number): Promise<boolean> {
+    await db.update(users)
+      .set({ lastLogin: new Date() })
+      .where(eq(users.id, id));
+    return true;
+  }
+  
+  async updateStripeCustomerId(userId: number, customerId: string): Promise<User> {
+    const [updatedUser] = await db.update(users)
+      .set({ stripeCustomerId: customerId })
+      .where(eq(users.id, userId))
+      .returning();
+    return updatedUser;
+  }
+  
+  async updateUserStripeInfo(userId: number, stripeInfo: { customerId: string, subscriptionId: string }): Promise<User> {
+    const [updatedUser] = await db.update(users)
+      .set({ 
+        stripeCustomerId: stripeInfo.customerId,
+        stripeSubscriptionId: stripeInfo.subscriptionId
+      })
+      .where(eq(users.id, userId))
+      .returning();
+    return updatedUser;
+  }
+  
   // Event methods
   async getAllEvents(): Promise<Event[]> {
     return await db.select().from(events);
+  }
+  
+  async getFeaturedEvents(): Promise<Event[]> {
+    return await db.select()
+      .from(events)
+      .where(eq(events.isFeatured, true));
   }
   
   async getEvent(id: number): Promise<Event | undefined> {
@@ -309,6 +409,29 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(events).where(eq(events.creatorId, creatorId));
   }
   
+  async getUpcomingEvents(limit: number = 10): Promise<Event[]> {
+    const today = new Date().toISOString().split('T')[0]; // Format as YYYY-MM-DD
+    return await db.select()
+      .from(events)
+      .where(
+        and(
+          eq(events.published, true),
+          // Compare string dates - not perfect but works for our date format (YYYY-MM-DD)
+          or(
+            eq(events.date, today),
+            sql`${events.date} > ${today}`
+          )
+        )
+      )
+      .limit(limit);
+  }
+  
+  async getEventsByDate(date: string): Promise<Event[]> {
+    return await db.select()
+      .from(events)
+      .where(eq(events.date, date));
+  }
+  
   async createEvent(event: InsertEvent): Promise<Event> {
     const [newEvent] = await db.insert(events).values(event).returning();
     return newEvent;
@@ -316,7 +439,10 @@ export class DatabaseStorage implements IStorage {
   
   async updateEvent(id: number, eventData: Partial<Event>): Promise<Event | undefined> {
     const [updatedEvent] = await db.update(events)
-      .set(eventData)
+      .set({
+        ...eventData,
+        updatedAt: new Date()
+      })
       .where(eq(events.id, id))
       .returning();
     return updatedEvent;
@@ -327,9 +453,54 @@ export class DatabaseStorage implements IStorage {
     return true; // If no error is thrown, consider it successful
   }
   
+  async updateEventRating(eventId: number, rating: number): Promise<Event> {
+    // Get the current event to calculate new average
+    const event = await this.getEvent(eventId);
+    if (!event) {
+      throw new Error("Event not found");
+    }
+    
+    // Calculate new average rating
+    const currentTotal = (event.averageRating || 0) * (event.totalRatings || 0);
+    const newTotalRatings = (event.totalRatings || 0) + 1;
+    const newAverageRating = (currentTotal + rating) / newTotalRatings;
+    
+    // Update the event with new rating data
+    const [updatedEvent] = await db.update(events)
+      .set({
+        averageRating: newAverageRating,
+        totalRatings: newTotalRatings,
+        updatedAt: new Date()
+      })
+      .where(eq(events.id, eventId))
+      .returning();
+    
+    return updatedEvent;
+  }
+  
   // Purchase methods
   async createPurchase(purchase: InsertPurchase): Promise<Purchase> {
-    const [newPurchase] = await db.insert(purchases).values(purchase).returning();
+    // Generate a unique ticket code
+    const ticketCode = generateTicketCode();
+    
+    const [newPurchase] = await db.insert(purchases)
+      .values({
+        ...purchase,
+        ticketCode
+      })
+      .returning();
+    
+    // Create notification for the user
+    const event = await this.getEvent(purchase.eventId);
+    if (event) {
+      await this.createNotification({
+        userId: purchase.userId,
+        type: "purchase",
+        message: `You have successfully purchased ${purchase.quantity} ticket(s) for "${event.title}".`,
+        relatedId: newPurchase.id
+      });
+    }
+    
     return newPurchase;
   }
   
@@ -350,13 +521,387 @@ export class DatabaseStorage implements IStorage {
       .where(eq(purchases.userId, userId));
   }
   
+  async updatePurchaseStatus(id: number, status: "pending" | "completed" | "canceled" | "refunded"): Promise<Purchase> {
+    const [updatedPurchase] = await db.update(purchases)
+      .set({ status: status as any }) // Type casting to avoid strict type issues
+      .where(eq(purchases.id, id))
+      .returning();
+    return updatedPurchase;
+  }
+  
+  async checkInTicket(ticketCode: string): Promise<Purchase> {
+    const [purchase] = await db.select()
+      .from(purchases)
+      .where(eq(purchases.ticketCode, ticketCode));
+    
+    if (!purchase) {
+      throw new Error("Ticket not found");
+    }
+    
+    if (purchase.isCheckedIn) {
+      throw new Error("Ticket already checked in");
+    }
+    
+    const [updatedPurchase] = await db.update(purchases)
+      .set({ 
+        isCheckedIn: true,
+        checkInDate: new Date()
+      })
+      .where(eq(purchases.id, purchase.id))
+      .returning();
+    
+    return updatedPurchase;
+  }
+  
+  // Review methods
+  async createReview(review: InsertReview): Promise<Review> {
+    const [newReview] = await db.insert(reviews)
+      .values(review)
+      .returning();
+    
+    // Update the event's average rating
+    await this.updateEventRating(review.eventId, review.rating);
+    
+    // Notify the event creator
+    const event = await this.getEvent(review.eventId);
+    if (event) {
+      await this.createNotification({
+        userId: event.creatorId,
+        type: "review",
+        message: `Someone left a ${review.rating}-star review for your event "${event.title}".`,
+        relatedId: newReview.id
+      });
+    }
+    
+    return newReview;
+  }
+  
+  async getReview(id: number): Promise<Review | undefined> {
+    const [review] = await db.select().from(reviews).where(eq(reviews.id, id));
+    return review;
+  }
+  
+  async getReviewsByEvent(eventId: number): Promise<Review[]> {
+    return await db.select()
+      .from(reviews)
+      .where(eq(reviews.eventId, eventId));
+  }
+  
+  async getReviewsByUser(userId: number): Promise<Review[]> {
+    return await db.select()
+      .from(reviews)
+      .where(eq(reviews.userId, userId));
+  }
+  
+  async updateReview(id: number, reviewData: Partial<Review>): Promise<Review | undefined> {
+    // If rating is changing, we need to update event's average rating
+    const existingReview = await this.getReview(id);
+    if (existingReview && reviewData.rating && reviewData.rating !== existingReview.rating) {
+      // This is simplified - in a real app we'd recalculate the entire average
+      await this.updateEventRating(existingReview.eventId, reviewData.rating);
+    }
+    
+    const [updatedReview] = await db.update(reviews)
+      .set({
+        ...reviewData,
+        updatedAt: new Date()
+      })
+      .where(eq(reviews.id, id))
+      .returning();
+    return updatedReview;
+  }
+  
+  async deleteReview(id: number): Promise<boolean> {
+    // In a real app, deleting a review would also update the event's average rating
+    await db.delete(reviews).where(eq(reviews.id, id));
+    return true;
+  }
+  
+  // Follower methods
+  async followOrganizer(follower: InsertFollower): Promise<Follower> {
+    // Check if already following
+    const isAlreadyFollowing = await this.isFollowing(
+      follower.followerId, 
+      follower.organizerId
+    );
+    
+    if (isAlreadyFollowing) {
+      throw new Error("Already following this organizer");
+    }
+    
+    const [newFollower] = await db.insert(followers)
+      .values(follower)
+      .returning();
+    
+    // Notify the organizer
+    const followerUser = await this.getUser(follower.followerId);
+    await this.createNotification({
+      userId: follower.organizerId,
+      type: "follow",
+      message: `${followerUser?.fullName || followerUser?.username || "Someone"} is now following you.`,
+      relatedId: follower.followerId
+    });
+    
+    return newFollower;
+  }
+  
+  async unfollowOrganizer(followerId: number, organizerId: number): Promise<boolean> {
+    await db.delete(followers)
+      .where(
+        and(
+          eq(followers.followerId, followerId),
+          eq(followers.organizerId, organizerId)
+        )
+      );
+    return true;
+  }
+  
+  async getFollowers(organizerId: number): Promise<User[]> {
+    const followerRelations = await db.select()
+      .from(followers)
+      .where(eq(followers.organizerId, organizerId));
+    
+    // Get details of all followers
+    const followerUsers: User[] = [];
+    for (const relation of followerRelations) {
+      const user = await this.getUser(relation.followerId);
+      if (user) {
+        followerUsers.push(user);
+      }
+    }
+    
+    return followerUsers;
+  }
+  
+  async getFollowing(followerId: number): Promise<User[]> {
+    const followingRelations = await db.select()
+      .from(followers)
+      .where(eq(followers.followerId, followerId));
+    
+    // Get details of all followed organizers
+    const followedUsers: User[] = [];
+    for (const relation of followingRelations) {
+      const user = await this.getUser(relation.organizerId);
+      if (user) {
+        followedUsers.push(user);
+      }
+    }
+    
+    return followedUsers;
+  }
+  
+  async isFollowing(followerId: number, organizerId: number): Promise<boolean> {
+    const [result] = await db.select()
+      .from(followers)
+      .where(
+        and(
+          eq(followers.followerId, followerId),
+          eq(followers.organizerId, organizerId)
+        )
+      );
+    
+    return !!result;
+  }
+  
+  // Wishlist methods
+  async addToWishlist(wishlist: InsertWishlist): Promise<Wishlist> {
+    // Check if already in wishlist
+    const isAlreadyInWishlist = await this.isInWishlist(
+      wishlist.userId, 
+      wishlist.eventId
+    );
+    
+    if (isAlreadyInWishlist) {
+      throw new Error("Event already in wishlist");
+    }
+    
+    const [newWishlistItem] = await db.insert(wishlists)
+      .values(wishlist)
+      .returning();
+    
+    return newWishlistItem;
+  }
+  
+  async removeFromWishlist(userId: number, eventId: number): Promise<boolean> {
+    await db.delete(wishlists)
+      .where(
+        and(
+          eq(wishlists.userId, userId),
+          eq(wishlists.eventId, eventId)
+        )
+      );
+    return true;
+  }
+  
+  async getWishlistByUser(userId: number): Promise<Event[]> {
+    // Get wishlist items
+    const wishlistItems = await db.select()
+      .from(wishlists)
+      .where(eq(wishlists.userId, userId));
+    
+    // Get details of all events
+    const wishlistEvents: Event[] = [];
+    for (const item of wishlistItems) {
+      const event = await this.getEvent(item.eventId);
+      if (event) {
+        wishlistEvents.push(event);
+      }
+    }
+    
+    return wishlistEvents;
+  }
+  
+  async isInWishlist(userId: number, eventId: number): Promise<boolean> {
+    const [result] = await db.select()
+      .from(wishlists)
+      .where(
+        and(
+          eq(wishlists.userId, userId),
+          eq(wishlists.eventId, eventId)
+        )
+      );
+    
+    return !!result;
+  }
+  
+  // Notification methods
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const [newNotification] = await db.insert(notifications)
+      .values(notification)
+      .returning();
+    return newNotification;
+  }
+  
+  async getNotificationsByUser(userId: number, unreadOnly: boolean = false): Promise<Notification[]> {
+    if (unreadOnly) {
+      return await db.select()
+        .from(notifications)
+        .where(and(
+          eq(notifications.userId, userId),
+          eq(notifications.isRead, false)
+        ))
+        .orderBy(notifications.createdAt);
+    } else {
+      return await db.select()
+        .from(notifications)
+        .where(eq(notifications.userId, userId))
+        .orderBy(notifications.createdAt);
+    }
+  }
+  
+  async markNotificationAsRead(id: number): Promise<Notification> {
+    const [updatedNotification] = await db.update(notifications)
+      .set({ isRead: true })
+      .where(eq(notifications.id, id))
+      .returning();
+    return updatedNotification;
+  }
+  
+  async markAllNotificationsAsRead(userId: number): Promise<boolean> {
+    await db.update(notifications)
+      .set({ isRead: true })
+      .where(eq(notifications.userId, userId));
+    return true;
+  }
+  
+  async deleteNotification(id: number): Promise<boolean> {
+    await db.delete(notifications).where(eq(notifications.id, id));
+    return true;
+  }
+  
+  // Promocode methods
+  async createPromocode(promocode: InsertPromocode): Promise<Promocode> {
+    const [newPromocode] = await db.insert(promocodes)
+      .values(promocode)
+      .returning();
+    return newPromocode;
+  }
+  
+  async getPromocode(id: number): Promise<Promocode | undefined> {
+    const [promocode] = await db.select().from(promocodes).where(eq(promocodes.id, id));
+    return promocode;
+  }
+  
+  async getPromocodeByCode(code: string): Promise<Promocode | undefined> {
+    const [promocode] = await db.select().from(promocodes).where(eq(promocodes.code, code));
+    return promocode;
+  }
+  
+  async getPromocodesByCreator(creatorId: number): Promise<Promocode[]> {
+    return await db.select()
+      .from(promocodes)
+      .where(eq(promocodes.creatorId, creatorId));
+  }
+  
+  async getPromocodesByEvent(eventId: number): Promise<Promocode[]> {
+    return await db.select()
+      .from(promocodes)
+      .where(eq(promocodes.eventId, eventId));
+  }
+  
+  async validatePromocode(code: string, eventId?: number): Promise<Promocode | null> {
+    const promocode = await this.getPromocodeByCode(code);
+    
+    // Check if promocode exists
+    if (!promocode) {
+      return null;
+    }
+    
+    // Check if active
+    if (!promocode.isActive) {
+      return null;
+    }
+    
+    // Check if not expired
+    if (promocode.endDate && new Date(promocode.endDate) < new Date()) {
+      return null;
+    }
+    
+    // Check if not before start date
+    if (promocode.startDate && new Date(promocode.startDate) > new Date()) {
+      return null;
+    }
+    
+    // Check if max uses not exceeded
+    if (promocode.maxUses !== null && 
+        promocode.usesCount !== null && 
+        promocode.maxUses > 0 && 
+        promocode.usesCount >= promocode.maxUses) {
+      return null;
+    }
+    
+    // Check if valid for this event (if promocode is event-specific)
+    if (promocode.eventId && eventId && promocode.eventId !== eventId) {
+      return null;
+    }
+    
+    return promocode;
+  }
+  
+  async usePromocode(id: number): Promise<Promocode> {
+    const [updatedPromocode] = await db.update(promocodes)
+      .set({ 
+        usesCount: sql`${promocodes.usesCount} + 1` 
+      })
+      .where(eq(promocodes.id, id))
+      .returning();
+    return updatedPromocode;
+  }
+  
   // Auth methods
   async verifyCredentials(username: string, password: string): Promise<User | null> {
     const user = await this.getUserByUsername(username);
     if (!user) return null;
     
     const isPasswordValid = await comparePasswords(password, user.password);
-    return isPasswordValid ? user : null;
+    
+    if (isPasswordValid) {
+      // Update last login timestamp
+      await this.updateLastLogin(user.id);
+      return user;
+    }
+    
+    return null;
   }
 }
 
