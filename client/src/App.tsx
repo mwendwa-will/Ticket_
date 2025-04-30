@@ -14,6 +14,8 @@ import WishlistPage from "@/pages/WishlistPage";
 import CalendarView from "@/pages/CalendarView";
 import AuthPage from "@/pages/AuthPage";
 import EventCreationPage from "@/pages/EventCreationPage";
+import ProfilePage from "@/pages/ProfilePage";
+import AdminUsersPage from "@/pages/AdminUsersPage";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
 
@@ -38,6 +40,15 @@ function Router() {
             path="/create-event" 
             roles={[ROLE_ADMIN, ROLE_ORGANIZER]} 
             component={EventCreationPage} 
+          />
+          <ProtectedRoute 
+            path="/profile" 
+            component={ProfilePage} 
+          />
+          <ProtectedRoute 
+            path="/admin/users" 
+            roles={[ROLE_ADMIN]} 
+            component={AdminUsersPage} 
           />
           <Route component={NotFound} />
         </Switch>

@@ -229,6 +229,257 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // User management APIs
+  
+  // Get current user profile
+  app.get("/api/user/:id", checkRole([ROLE_USER, ROLE_ORGANIZER, ROLE_ADMIN]), async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      
+      if (isNaN(userId)) {
+        return res.status(400).json({ error: "Invalid user ID" });
+      }
+      
+      // Users can only view their own profile unless they're an admin
+      if (userId !== req.user!.id && req.user!.role !== ROLE_ADMIN) {
+        return res.status(403).json({ error: "You don't have permission to view this user profile" });
+      }
+      
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Don't send the password hash
+      const { password, ...userWithoutPassword } = user;
+      
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error("Error fetching user profile:", error);
+      res.status(500).json({ error: "Failed to fetch user profile" });
+    }
+  });
+  
+  // Update user profile
+  app.patch("/api/user/:id", checkRole([ROLE_USER, ROLE_ORGANIZER, ROLE_ADMIN]), async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      
+      if (isNaN(userId)) {
+        return res.status(400).json({ error: "Invalid user ID" });
+      }
+      
+      // Users can only update their own profile unless they're an admin
+      if (userId !== req.user!.id && req.user!.role !== ROLE_ADMIN) {
+        return res.status(403).json({ error: "You don't have permission to update this user profile" });
+      }
+      
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Don't allow role changes through this endpoint (use admin endpoints for that)
+      if (req.user!.role !== ROLE_ADMIN && req.body.role) {
+        delete req.body.role;
+      }
+      
+      // Don't allow password changes through this endpoint (use specific password endpoint)
+      if (req.body.password) {
+        delete req.body.password;
+      }
+      
+      const updatedUser = await storage.updateUser(userId, req.body);
+      
+      if (!updatedUser) {
+        return res.status(500).json({ error: "Failed to update user" });
+      }
+      
+      // Don't send the password hash
+      const { password, ...userWithoutPassword } = updatedUser;
+      
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error("Error updating user profile:", error);
+      res.status(500).json({ error: "Failed to update user profile" });
+    }
+  });
+  
+  // Update user password
+  app.patch("/api/user/:id/password", checkRole([ROLE_USER, ROLE_ORGANIZER, ROLE_ADMIN]), async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      
+      if (isNaN(userId)) {
+        return res.status(400).json({ error: "Invalid user ID" });
+      }
+      
+      // Users can only update their own password unless they're an admin
+      if (userId !== req.user!.id && req.user!.role !== ROLE_ADMIN) {
+        return res.status(403).json({ error: "You don't have permission to update this user's password" });
+      }
+      
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      const { currentPassword, newPassword } = req.body;
+      
+      // Admin users don't need to provide current password
+      if (req.user!.role !== ROLE_ADMIN) {
+        // Verify current password
+        const isPasswordValid = await storage.verifyCredentials(user.username, currentPassword);
+        
+        if (!isPasswordValid) {
+          return res.status(401).json({ error: "Current password is incorrect" });
+        }
+      }
+      
+      // Update password
+      const updatedUser = await storage.updateUser(userId, { password: newPassword });
+      
+      if (!updatedUser) {
+        return res.status(500).json({ error: "Failed to update password" });
+      }
+      
+      res.json({ message: "Password updated successfully" });
+    } catch (error) {
+      console.error("Error updating password:", error);
+      res.status(500).json({ error: "Failed to update password" });
+    }
+  });
+  
+  // Admin API routes
+  
+  // Get all users (admin only)
+  app.get("/api/admin/users", checkRole([ROLE_ADMIN]), async (req, res) => {
+    try {
+      const search = req.query.search as string | undefined;
+      
+      let users;
+      if (search) {
+        // Get users by search query
+        const searchPattern = `%${search}%`;
+        users = await storage.searchUsers(searchPattern);
+      } else {
+        // Get all users
+        users = await storage.getAllUsers();
+      }
+      
+      // Don't send password hashes
+      const usersWithoutPasswords = users.map(user => {
+        const { password, ...userWithoutPassword } = user;
+        return userWithoutPassword;
+      });
+      
+      res.json(usersWithoutPasswords);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ error: "Failed to fetch users" });
+    }
+  });
+  
+  // Create user (admin only)
+  app.post("/api/admin/users", checkRole([ROLE_ADMIN]), async (req, res) => {
+    try {
+      // Check if username or email already exists
+      const existingUserByUsername = await storage.getUserByUsername(req.body.username);
+      const existingUserByEmail = await storage.getUserByEmail(req.body.email);
+      
+      if (existingUserByUsername) {
+        return res.status(400).json({ error: "Username already exists" });
+      }
+      
+      if (existingUserByEmail) {
+        return res.status(400).json({ error: "Email already exists" });
+      }
+      
+      // Create user
+      const user = await storage.createUser(req.body);
+      
+      // Don't send the password hash
+      const { password, ...userWithoutPassword } = user;
+      
+      res.status(201).json(userWithoutPassword);
+    } catch (error) {
+      console.error("Error creating user:", error);
+      res.status(500).json({ error: "Failed to create user" });
+    }
+  });
+  
+  // Update user (admin only)
+  app.patch("/api/admin/users/:id", checkRole([ROLE_ADMIN]), async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      
+      if (isNaN(userId)) {
+        return res.status(400).json({ error: "Invalid user ID" });
+      }
+      
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Prevent changing the main admin's role
+      if (userId === 1 && req.body.role && req.body.role !== ROLE_ADMIN) {
+        return res.status(403).json({ error: "Cannot change the role of the main admin user" });
+      }
+      
+      const updatedUser = await storage.updateUser(userId, req.body);
+      
+      if (!updatedUser) {
+        return res.status(500).json({ error: "Failed to update user" });
+      }
+      
+      // Don't send the password hash
+      const { password, ...userWithoutPassword } = updatedUser;
+      
+      res.json(userWithoutPassword);
+    } catch (error) {
+      console.error("Error updating user:", error);
+      res.status(500).json({ error: "Failed to update user" });
+    }
+  });
+  
+  // Delete user (admin only)
+  app.delete("/api/admin/users/:id", checkRole([ROLE_ADMIN]), async (req, res) => {
+    try {
+      const userId = parseInt(req.params.id);
+      
+      if (isNaN(userId)) {
+        return res.status(400).json({ error: "Invalid user ID" });
+      }
+      
+      const user = await storage.getUser(userId);
+      
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      
+      // Prevent deleting the main admin
+      if (userId === 1) {
+        return res.status(403).json({ error: "Cannot delete the main admin user" });
+      }
+      
+      const success = await storage.deleteUser(userId);
+      
+      if (!success) {
+        return res.status(500).json({ error: "Failed to delete user" });
+      }
+      
+      res.status(204).end();
+    } catch (error) {
+      console.error("Error deleting user:", error);
+      res.status(500).json({ error: "Failed to delete user" });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;

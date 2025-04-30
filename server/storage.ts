@@ -51,6 +51,9 @@ export interface IStorage {
   updateLastLogin(id: number): Promise<boolean>;
   updateStripeCustomerId(userId: number, customerId: string): Promise<User>;
   updateUserStripeInfo(userId: number, stripeInfo: { customerId: string, subscriptionId: string }): Promise<User>;
+  getAllUsers(): Promise<User[]>;
+  searchUsers(query: string): Promise<User[]>;
+  deleteUser(id: number): Promise<boolean>;
   
   // Event methods
   getAllEvents(): Promise<Event[]>;
@@ -369,6 +372,62 @@ export class DatabaseStorage implements IStorage {
       .where(eq(users.id, userId))
       .returning();
     return updatedUser;
+  }
+  
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(users).orderBy(users.createdAt);
+  }
+  
+  async searchUsers(query: string): Promise<User[]> {
+    return await db.select()
+      .from(users)
+      .where(
+        or(
+          like(users.username, query),
+          like(users.email, query),
+          like(users.fullName, query)
+        )
+      )
+      .orderBy(users.username);
+  }
+  
+  async deleteUser(id: number): Promise<boolean> {
+    // To be safe, we first check if the user exists
+    const user = await this.getUser(id);
+    if (!user) {
+      return false;
+    }
+    
+    // Then delete related records before deleting the user to maintain referential integrity
+    // This is a simplification - in a production environment, you might want to soft delete
+    // or archive user data instead of hard deleting it
+    
+    // Delete user's purchases (and related data)
+    const purchases = await this.getPurchasesByUser(id);
+    for (const purchase of purchases) {
+      await db.delete(purchases).where(eq(purchases.id, purchase.id));
+    }
+    
+    // Delete user's reviews
+    await db.delete(reviews).where(eq(reviews.userId, id));
+    
+    // Delete user's followers/following relationships
+    await db.delete(followers).where(eq(followers.followerId, id));
+    await db.delete(followers).where(eq(followers.organizerId, id));
+    
+    // Delete user's wishlist items
+    await db.delete(wishlists).where(eq(wishlists.userId, id));
+    
+    // Delete user's notifications
+    await db.delete(notifications).where(eq(notifications.userId, id));
+    
+    // Delete user's promocodes
+    await db.delete(promocodes).where(eq(promocodes.creatorId, id));
+    
+    // Finally, delete the user
+    await db.delete(users).where(eq(users.id, id));
+    
+    return true;
   }
   
   // Event methods
