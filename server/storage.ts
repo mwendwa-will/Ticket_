@@ -121,11 +121,21 @@ export interface IStorage {
   sessionStore: Store;
 }
 
+// Import for MemoryStore
+import createMemoryStore from "memorystore";
+const MemoryStore = createMemoryStore(session);
+
 export class MemStorage implements IStorage {
+  // This class is used for development only, we're actually using the DatabaseStorage
+  // but TypeScript requires us to implement all interface methods
+  // (in a real application, we would refactor this)
   private events: Map<number, Event>;
   private purchases: Map<number, Purchase>;
+  private users: Map<number, User> = new Map<number, User>();
   private eventIdCounter: number;
   private purchaseIdCounter: number;
+  private userIdCounter: number = 1;
+  sessionStore: Store = new MemoryStore({ checkPeriod: 86400000 });
 
   constructor() {
     this.events = new Map<number, Event>();
@@ -288,6 +298,58 @@ export class MemStorage implements IStorage {
       purchase.eventId === eventId
     );
   }
+
+  // Implementing missing methods to satisfy TypeScript
+  // Note: These are just stub implementations for development 
+  async createUser(): Promise<User> { throw new Error("Not implemented"); }
+  async getUser(): Promise<User | undefined> { throw new Error("Not implemented"); }
+  async getUserByUsername(): Promise<User | undefined> { throw new Error("Not implemented"); }
+  async getUserByEmail(): Promise<User | undefined> { throw new Error("Not implemented"); }
+  async updateUser(): Promise<User | undefined> { throw new Error("Not implemented"); }
+  async updateLastLogin(): Promise<boolean> { throw new Error("Not implemented"); }
+  async updateStripeCustomerId(): Promise<User> { throw new Error("Not implemented"); }
+  async updateUserStripeInfo(): Promise<User> { throw new Error("Not implemented"); }
+  async getAllUsers(): Promise<User[]> { throw new Error("Not implemented"); }
+  async searchUsers(): Promise<User[]> { throw new Error("Not implemented"); }
+  async deleteUser(): Promise<boolean> { throw new Error("Not implemented"); }
+  async getFeaturedEvents(): Promise<Event[]> { throw new Error("Not implemented"); }
+  async getEventsByCreator(): Promise<Event[]> { throw new Error("Not implemented"); }
+  async getUpcomingEvents(): Promise<Event[]> { throw new Error("Not implemented"); }
+  async getEventsByDate(): Promise<Event[]> { throw new Error("Not implemented"); }
+  async updateEvent(): Promise<Event | undefined> { throw new Error("Not implemented"); }
+  async deleteEvent(): Promise<boolean> { throw new Error("Not implemented"); }
+  async updateEventRating(): Promise<Event> { throw new Error("Not implemented"); }
+  async getPurchasesByUser(): Promise<Purchase[]> { throw new Error("Not implemented"); }
+  async updatePurchaseStatus(): Promise<Purchase> { throw new Error("Not implemented"); }
+  async checkInTicket(): Promise<Purchase> { throw new Error("Not implemented"); }
+  async createReview(): Promise<Review> { throw new Error("Not implemented"); }
+  async getReview(): Promise<Review | undefined> { throw new Error("Not implemented"); }
+  async getReviewsByEvent(): Promise<Review[]> { throw new Error("Not implemented"); }
+  async getReviewsByUser(): Promise<Review[]> { throw new Error("Not implemented"); }
+  async updateReview(): Promise<Review | undefined> { throw new Error("Not implemented"); }
+  async deleteReview(): Promise<boolean> { throw new Error("Not implemented"); }
+  async followOrganizer(): Promise<Follower> { throw new Error("Not implemented"); }
+  async unfollowOrganizer(): Promise<boolean> { throw new Error("Not implemented"); }
+  async getFollowers(): Promise<User[]> { throw new Error("Not implemented"); }
+  async getFollowing(): Promise<User[]> { throw new Error("Not implemented"); }
+  async isFollowing(): Promise<boolean> { throw new Error("Not implemented"); }
+  async addToWishlist(): Promise<Wishlist> { throw new Error("Not implemented"); }
+  async removeFromWishlist(): Promise<boolean> { throw new Error("Not implemented"); }
+  async getWishlistByUser(): Promise<Event[]> { throw new Error("Not implemented"); }
+  async isInWishlist(): Promise<boolean> { throw new Error("Not implemented"); }
+  async createNotification(): Promise<Notification> { throw new Error("Not implemented"); }
+  async getNotificationsByUser(): Promise<Notification[]> { throw new Error("Not implemented"); }
+  async markNotificationAsRead(): Promise<Notification> { throw new Error("Not implemented"); }
+  async markAllNotificationsAsRead(): Promise<boolean> { throw new Error("Not implemented"); }
+  async deleteNotification(): Promise<boolean> { throw new Error("Not implemented"); }
+  async createPromocode(): Promise<Promocode> { throw new Error("Not implemented"); }
+  async getPromocode(): Promise<Promocode | undefined> { throw new Error("Not implemented"); }
+  async getPromocodeByCode(): Promise<Promocode | undefined> { throw new Error("Not implemented"); }
+  async getPromocodesByCreator(): Promise<Promocode[]> { throw new Error("Not implemented"); }
+  async getPromocodesByEvent(): Promise<Promocode[]> { throw new Error("Not implemented"); }
+  async validatePromocode(): Promise<Promocode | null> { throw new Error("Not implemented"); }
+  async usePromocode(): Promise<Promocode> { throw new Error("Not implemented"); }
+  async verifyCredentials(): Promise<User | null> { throw new Error("Not implemented"); }
 }
 
 // Database storage implementation

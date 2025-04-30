@@ -154,6 +154,14 @@ const Header = () => {
                       </Link>
                     </DropdownMenuItem>
                   )}
+                  {user.role === 'admin' && (
+                    <DropdownMenuItem asChild>
+                      <Link href="/admin/users">
+                        <UserIcon className="mr-2 h-4 w-4" />
+                        <span>Manage Users</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem 
                     onClick={handleLogout}
