@@ -4,6 +4,7 @@ TicketMaster is a full-stack web application for browsing, searching, and purcha
 
 ## Features
 
+### Core Features
 - **User Authentication**: Secure signup, login, and role-based access control
 - **Event Discovery**: Browse and search events by category, date, or keywords
 - **Wishlist Management**: Save favorite events to a personal wishlist
@@ -12,21 +13,46 @@ TicketMaster is a full-stack web application for browsing, searching, and purcha
 - **Ticket Purchase**: Seamless checkout process for buying event tickets
 - **Responsive Design**: Modern UI that works across desktop and mobile devices
 
+### Advanced Features
+- **User Management Dashboard**: Admin interface for managing user accounts
+- **Profile Management**: Users can update their profiles and preferences
+- **Social Features**: Follow event organizers and receive updates
+- **Reviews & Ratings**: Leave reviews and ratings for attended events
+- **Notifications**: Real-time notifications for purchases, follows, and more
+- **Promo Codes**: Support for discount codes and promotional offers
+- **QR Code Tickets**: Digital tickets with QR codes for event check-in
+
 ## Tech Stack
 
 ### Frontend
 - React with TypeScript
 - TanStack Query for data fetching and state management
-- Wouter for routing
-- Tailwind CSS for styling
-- Shadcn UI components
-- Lucide React for icons
+- Wouter for lightweight client-side routing
+- Tailwind CSS for responsive styling
+- Shadcn UI components for consistent design
+- Lucide React for beautiful icons
+- React Hook Form for form validation and submission
+- Zod for schema validation
+- Date-fns for date manipulation and formatting
 
 ### Backend
 - Node.js with Express
 - PostgreSQL database with Drizzle ORM
-- Passport.js for authentication
-- Zod for validation
+- Passport.js for authentication and session management
+- Zod for request validation
+- Stripe API integration for payment processing
+- SendGrid for email notifications
+- WebSockets for real-time notifications
+- QR code generation for digital tickets
+- Crypto for secure password hashing
+
+### DevOps & Tooling
+- Vite for fast development and optimized builds
+- TypeScript for type safety across the stack
+- ESLint for code quality
+- PostgreSQL on Neon Database for cloud hosting
+- Session persistence with connect-pg-simple
+- Shared schema definitions between frontend and backend
 
 ## Prerequisites
 
@@ -105,11 +131,37 @@ This will start both the backend server and the frontend development server. The
 
 ## User Roles
 
-The application supports three user roles:
+The application implements a robust role-based access control system with three distinct user roles:
 
-1. **User**: Can browse events, save to wishlist, and purchase tickets
-2. **Organizer**: Can create and manage events, plus all User privileges
-3. **Admin**: Full access to all features and management tools
+### Regular User
+- Browse and search all events
+- View event details and available tickets
+- Purchase tickets for events
+- Save events to personal wishlist
+- Follow event organizers
+- Leave reviews and ratings for attended events
+- Manage personal profile and preferences
+- Receive notifications for followed organizers and purchases
+
+### Organizer
+- All regular user privileges
+- Create and publish new events
+- Edit and manage created events
+- View attendee lists for their events
+- Create and manage promotional codes
+- Access sales analytics for their events
+- Communicate with attendees via notifications
+- View event check-ins via ticket scanning
+
+### Administrator
+- Complete system access and control
+- User account management (create, edit, suspend, delete)
+- Manage all events regardless of creator
+- Access comprehensive analytics dashboard
+- Override and modify any system settings
+- Manage global promotional campaigns
+- Review and moderate user-generated content
+- Troubleshoot and address system issues
 
 ## Available Scripts
 
@@ -120,20 +172,48 @@ The application supports three user roles:
 
 ## Environment Variables
 
+### Required
 - `DATABASE_URL`: PostgreSQL connection string
 - `SESSION_SECRET`: Secret for session management
-- `STRIPE_SECRET_KEY` (optional): For Stripe payment integration
-- `VITE_STRIPE_PUBLIC_KEY` (optional): For Stripe payment integration on the client side
 
-## Authentication
+### Optional External Services
+- `STRIPE_SECRET_KEY`: Stripe API secret key for payment processing
+- `VITE_STRIPE_PUBLIC_KEY`: Stripe publishable key for client-side integration
+- `STRIPE_PRICE_ID`: For subscription payment plans
+- `SENDGRID_API_KEY`: For email notifications and communications
+- `SITE_URL`: Base URL for the application (used in emails and redirects)
 
-The application uses session-based authentication with Passport.js. Passwords are securely hashed using scrypt before being stored in the database.
+## Authentication & Security
+
+### Authentication System
+- Session-based authentication using Passport.js
+- Secure password hashing with Node.js Crypto scrypt algorithm
+- PostgreSQL-based session storage for persistence across server restarts
+- Remember-me functionality for extended login sessions
+- Rate limiting on authentication attempts to prevent brute force attacks
+
+### Security Features
+- Role-based access control (RBAC) for all API endpoints
+- CSRF protection for all form submissions
+- Sanitized user inputs to prevent XSS attacks
+- Securely hashed and salted passwords
+- Secure HTTP-only cookies for session management
+- Protected routes requiring authentication
+- Password strength requirements and validation
 
 ## Database Schema
 
-- **Users**: Stores user information and credentials
-- **Events**: Stores event information
-- **Purchases**: Records ticket purchases
+### Core Tables
+- **Users**: Stores user information, credentials, and preferences
+- **Events**: Stores event information, location, pricing, and capacity
+- **Purchases**: Records ticket purchases, payment status, and ticket codes
+
+### Relationship Tables
+- **Reviews**: User reviews and ratings for events
+- **Followers**: User-to-organizer following relationships
+- **Wishlists**: User-saved events
+- **Notifications**: System and user-generated notifications
+- **Promocodes**: Discount and promotional codes for events
 
 ## Contributing
 
